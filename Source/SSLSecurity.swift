@@ -27,6 +27,78 @@ public protocol SSLTrustValidator {
     func isValid(_ trust: SecTrust, domain: String?) -> Bool
 }
 
+extension SSLTrustValidator {
+    /**
+     Get the certificate chain for the trust
+     
+     - parameter trust: is the trust to lookup the certificate chain for
+     
+     - returns: the certificate chain for the trust
+     */
+    func certificateChain(_ trust: SecTrust) -> [Data] {
+        let certificates = (0..<SecTrustGetCertificateCount(trust)).reduce([Data]()) { (certificates: [Data], index: Int) -> [Data] in
+            var certificates = certificates
+            let cert = SecTrustGetCertificateAtIndex(trust, index)
+            certificates.append(SecCertificateCopyData(cert!) as Data)
+            return certificates
+        }
+        
+        return certificates
+    }
+    
+    /**
+     Get the public key chain for the trust
+     
+     - parameter trust: is the trust to lookup the certificate chain and extract the public keys
+     
+     - returns: the public keys from the certifcate chain for the trust
+     */
+    func publicKeyChain(_ trust: SecTrust) -> [SecKey] {
+        let policy = SecPolicyCreateBasicX509()
+        let keys = (0..<SecTrustGetCertificateCount(trust)).reduce([SecKey]()) { (keys: [SecKey], index: Int) -> [SecKey] in
+            var keys = keys
+            let cert = SecTrustGetCertificateAtIndex(trust, index)
+            if let key = extractPublicKey(cert!, policy: policy) {
+                keys.append(key)
+            }
+            
+            return keys
+        }
+        
+        return keys
+    }
+    
+    /**
+     Get the public key from a certificate data
+     
+     - parameter data: is the certificate to pull the public key from
+     
+     - returns: a public key
+     */
+    func extractPublicKey(_ data: Data) -> SecKey? {
+        guard let cert = SecCertificateCreateWithData(nil, data as CFData) else { return nil }
+        
+        return extractPublicKey(cert, policy: SecPolicyCreateBasicX509())
+    }
+    
+    /**
+     Get the public key from a certificate
+     
+     - parameter data: is the certificate to pull the public key from
+     
+     - returns: a public key
+     */
+    func extractPublicKey(_ cert: SecCertificate, policy: SecPolicy) -> SecKey? {
+        var possibleTrust: SecTrust?
+        SecTrustCreateWithCertificates(cert, policy, &possibleTrust)
+        
+        guard let trust = possibleTrust else { return nil }
+        var result: SecTrustResultType = .unspecified
+        SecTrustEvaluate(trust, &result)
+        return SecTrustCopyPublicKey(trust)
+    }
+}
+
 open class SSLCert {
     var certData: Data?
     var key: SecKey?
@@ -185,76 +257,4 @@ open class SSLSecurity : SSLTrustValidator {
         }
         return false
     }
-    
-    /**
-    Get the public key from a certificate data
-    
-    - parameter data: is the certificate to pull the public key from
-    
-    - returns: a public key
-    */
-    func extractPublicKey(_ data: Data) -> SecKey? {
-        guard let cert = SecCertificateCreateWithData(nil, data as CFData) else { return nil }
-        
-        return extractPublicKey(cert, policy: SecPolicyCreateBasicX509())
-    }
-    
-    /**
-    Get the public key from a certificate
-    
-    - parameter data: is the certificate to pull the public key from
-    
-    - returns: a public key
-    */
-    func extractPublicKey(_ cert: SecCertificate, policy: SecPolicy) -> SecKey? {
-        var possibleTrust: SecTrust?
-        SecTrustCreateWithCertificates(cert, policy, &possibleTrust)
-        
-        guard let trust = possibleTrust else { return nil }
-        var result: SecTrustResultType = .unspecified
-        SecTrustEvaluate(trust, &result)
-        return SecTrustCopyPublicKey(trust)
-    }
-    
-    /**
-    Get the certificate chain for the trust
-    
-    - parameter trust: is the trust to lookup the certificate chain for
-    
-    - returns: the certificate chain for the trust
-    */
-    func certificateChain(_ trust: SecTrust) -> [Data] {
-        let certificates = (0..<SecTrustGetCertificateCount(trust)).reduce([Data]()) { (certificates: [Data], index: Int) -> [Data] in
-            var certificates = certificates
-            let cert = SecTrustGetCertificateAtIndex(trust, index)
-            certificates.append(SecCertificateCopyData(cert!) as Data)
-            return certificates
-        }
-        
-        return certificates
-    }
-    
-    /**
-    Get the public key chain for the trust
-    
-    - parameter trust: is the trust to lookup the certificate chain and extract the public keys
-    
-    - returns: the public keys from the certifcate chain for the trust
-    */
-    func publicKeyChain(_ trust: SecTrust) -> [SecKey] {
-        let policy = SecPolicyCreateBasicX509()
-        let keys = (0..<SecTrustGetCertificateCount(trust)).reduce([SecKey]()) { (keys: [SecKey], index: Int) -> [SecKey] in
-            var keys = keys
-            let cert = SecTrustGetCertificateAtIndex(trust, index)
-            if let key = extractPublicKey(cert!, policy: policy) {
-                keys.append(key)
-            }
-            
-            return keys
-        }
-        
-        return keys
-    }
-    
-    
 }
